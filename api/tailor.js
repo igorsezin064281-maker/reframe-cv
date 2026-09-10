@@ -1,4 +1,4 @@
-const formidable = require('formidable');
+const { formidable } = require('formidable');
 const mammoth = require('mammoth');
 const OpenAI = require('openai');
 const { applyDocxEdits } = require('../lib/applyDocxEdits');
