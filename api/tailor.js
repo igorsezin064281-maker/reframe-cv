@@ -13,6 +13,7 @@ module.exports = async function tailor(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST.' });
   if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'OPENAI_API_KEY is not configured.' });
+  let stage = 'parse';
   try {
     const form = formidable({ maxFileSize: 10 * 1024 * 1024, allowEmptyFiles: false });
     const [fields, files] = await form.parse(req);
@@ -20,7 +21,10 @@ module.exports = async function tailor(req, res) {
     const cv = files.cv?.[0];
     if (!cv || !cv.originalFilename?.toLowerCase().endsWith('.docx')) return res.status(400).json({ error: 'Please upload a DOCX CV.' });
     if (countWords(jobDescription) < 20 || countWords(jobDescription) > MAX_WORDS) return res.status(400).json({ error: 'Job description must contain 20 to 2,000 words.' });
+    stage = 'extract';
     const { value: cvText } = await mammoth.extractRawText({ path: cv.filepath });
+    if (!cvText.trim()) return res.status(400).json({ error: 'The DOCX did not contain readable text.' });
+    stage = 'llm';
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const answer = await client.responses.create({
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
@@ -31,13 +35,14 @@ module.exports = async function tailor(req, res) {
       text: { format: { type: 'json_object' } }
     });
     const result = JSON.parse(answer.output_text);
+    stage = 'rewrite';
     const document = await applyDocxEdits(cv.filepath, Array.isArray(result.edits) ? result.edits : []);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     res.setHeader('Content-Disposition', `attachment; filename="tailored-${cv.originalFilename.replace(/[^a-z0-9._-]/gi, '_')}"`);
     return res.status(200).send(document.buffer);
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ error: 'Tailoring failed. The original document was not changed.' });
+    return res.status(500).json({ error: 'Tailoring failed. The original document was not changed.', stage, detail: error instanceof Error ? error.message : 'Unknown server error.' });
   }
 };
 
