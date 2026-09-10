@@ -15,7 +15,7 @@ module.exports = async function tailor(req, res) {
   if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'OPENAI_API_KEY is not configured.' });
   try {
     const form = formidable({ maxFileSize: 10 * 1024 * 1024, allowEmptyFiles: false });
-    const [, fields, files] = await form.parse(req);
+    const [fields, files] = await form.parse(req);
     const jobDescription = String(fields.jobDescription?.[0] || '');
     const cv = files.cv?.[0];
     if (!cv || !cv.originalFilename?.toLowerCase().endsWith('.docx')) return res.status(400).json({ error: 'Please upload a DOCX CV.' });
